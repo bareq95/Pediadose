@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>PediaDose</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    
+    <style>
+        :root { --bg: #080a0c; --card: #161b22; --accent: #00d2ff; --text: #ffffff; }
+        body { background: var(--bg); color: var(--text); font-family: sans-serif; margin: 0; padding: 20px; direction: ltr; }
+        header { text-align: center; margin-bottom: 30px; }
+        input { width: 100%; padding: 12px; margin-bottom: 10px; border-radius: 10px; border: 1px solid #333; background: var(--bg); color: var(--accent); box-sizing: border-box; font-size: 16px; outline: none; }
+        .card { background: var(--card); padding: 15px; border-radius: 15px; border: 1px solid #30363d; margin-bottom: 15px; }
+        .cond-box { background: #0d1117; padding: 10px; border-radius: 10px; margin-top: 10px; border: 1px solid #222; }
+        .dose-flex { display: flex; justify-content: space-between; margin-top: 5px; }
+        .admin-panel { background: #00252e; padding: 20px; border-radius: 20px; border: 1px solid var(--accent); margin-top: 50px; }
+        .btn { background: var(--accent); color: #000; border: none; padding: 10px; border-radius: 8px; font-weight: bold; width: 100%; cursor: pointer; }
+        .hidden-trigger { opacity: 0.05; text-align: center; padding: 20px; cursor: pointer; margin-top: 100px; }
+        .tag { background: #333; padding: 5px; border-radius: 5px; margin: 2px; display: inline-block; font-size: 12px; }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1 style="color: var(--accent); margin:0;">PediaDose</h1>
+    <small style="opacity:0.6;">Dr. Bareq Alsaidy Edition</small>
+</header>
+
+<div id="user-ui">
+    <input type="number" id="weight" placeholder="Weight (kg)" oninput="renderMeds()">
+    <input type="text" id="search" placeholder="Search Medicine..." oninput="renderMeds()">
+    <div id="meds-list"></div>
+</div>
+
+<div id="admin-ui" style="display:none;" class="admin-panel">
+    <h3>Admin Control</h3>
+    <input type="text" id="m-name" placeholder="Medicine Name">
+    <div style="display:flex; gap:5px;">
+        <input type="number" id="m-mg" placeholder="mg">
+        <input type="number" id="m-ml" placeholder="ml">
+        <input type="number" id="m-freq" placeholder="Freq">
+    </div>
+    <div class="cond-box">
+        <input type="text" id="c-title" placeholder="Condition">
+        <div style="display:flex; gap:5px;">
+            <input type="number" id="c-min" placeholder="Min mg/kg">
+            <input type="number" id="c-max" placeholder="Max mg/kg">
+            <button class="btn" onclick="addCond()" style="width: auto;">Add</button>
+        </div>
+        <div id="temp-conds" style="margin-top:10px;"></div>
+    </div>
+    <button class="btn" onclick="saveMed()" style="margin-top:10px;">Save & Publish</button>
+    <button class="btn" onclick="logout()" style="background:none; color:white; margin-top:10px;">Exit Admin</button>
+</div>
+
+<div class="hidden-trigger" onclick="login()">.</div>
+
+<script>
+    let meds = JSON.parse(localStorage.getItem('pedia_db')) || [];
+    let tempConds = [];
+
+    // نظام الأوفلاين: تحميل البيانات من Replit DB (أو محلياً إذا انقطع النت)
+    async function loadData() {
+        try {
+            const res = await fetch('/api/get-meds');
+            if (res.ok) {
+                meds = await res.json();
+                localStorage.setItem('pedia_db', JSON.stringify(meds));
+            }
+        } catch (e) { console.log("Offline mode"); }
+        renderMeds();
+    }
+
+    function renderMeds() {
+        const w = document.getElementById('weight').value;
+        const s = document.getElementById('search').value.toLowerCase();
+        const list = document.getElementById('meds-list');
+        list.innerHTML = '';
+
+        if (!w || !s) return;
+
+        meds.filter(m => m.name.toLowerCase().includes(s)).forEach(med => {
+            let html = `<div class="card">
+                <h3 style="color:var(--accent); margin:0;">${med.name}</h3>
+                <small style="color:#888">${med.mg}mg/${med.ml}ml - ${med.freq}x daily</small>`;
+            
+            med.conditions.forEach(c => {
+                const minDose = ((w * c.min / med.freq) * med.ml / med.mg).toFixed(1);
+                const maxDose = ((w * c.max / med.freq) * med.ml / med.mg).toFixed(1);
+                html += `<div class="cond-box">
+                    <strong>${c.title}</strong>
+                    <div class="dose-flex">
+                        <span style="color:#4caf50">Min: ${minDose} ml</span>
+                        <span style="color:#f44336">Max: ${maxDose} ml</span>
+                    </div>
+                </div>`;
+            });
+            html += `</div>`;
+            list.innerHTML += html;
+        });
+    }
+
+    function login() {
+        const u = prompt("User:");
+        const p = prompt("Pass:");
+        if (u === "bareq" && p === "drbareqalsaidy") {
+            document.getElementById('admin-ui').style.display = 'block';
+            document.getElementById('user-ui').style.display = 'none';
+        }
+    }
+
+    function addCond() {
+        const t = document.getElementById('c-title').value;
+        const mn = document.getElementById('c-min').value;
+        const mx = document.getElementById('c-max').value;
+        if (t && mn && mx) {
+            tempConds.push({ title: t, min: mn, max: mx });
+            document.getElementById('temp-conds').innerHTML += `<span class="tag">${t}</span>`;
+            document.getElementById('c-title').value = '';
+            document.getElementById('c-min').value = '';
+            document.getElementById('c-max').value = '';
+        }
+    }
+
+    async function saveMed() {
+        const newMed = {
+            id: Date.now(),
+            name: document.getElementById('m-name').value,
+            mg: document.getElementById('m-mg').value,
+            ml: document.getElementById('m-ml').value,
+            freq: document.getElementById('m-freq').value,
+            conditions: tempConds
+        };
+        meds.push(newMed);
+        localStorage.setItem('pedia_db', JSON.stringify(meds));
+        
+        // إرسال للسيرفر (Replit DB)
+        await fetch('/api/save-meds', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(meds)
+        });
+        
+        alert("Published!");
+        location.reload();
+    }
+
+    function logout() { location.reload(); }
+    
+    window.onload = loadData;
+</script>
+</body>
+</html>
